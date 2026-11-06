@@ -10,6 +10,7 @@ $fixtures = [ordered]@{
     "vocabulary-test-cases.jsonl" = [ordered]@{
         1 = @($false, $true, $true)
         2 = @($false, $true)
+        3 = @($true)
     }
     "format-test-cases.jsonl" = [ordered]@{
         1 = @($true, $false)

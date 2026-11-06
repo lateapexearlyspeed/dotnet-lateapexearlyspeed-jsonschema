@@ -96,7 +96,9 @@ while (cmdSource.GetNextCommand() is { } line && line != "")
                     // Vocabulary selection happens while the schema is deserialized, before $ref population.
                     foreach (JsonNode? document in registrySchemas.Select(entry => entry.Value))
                     {
-                        if (document is JsonObject metaSchema && metaSchema.ContainsKey("$vocabulary"))
+                        if (document is JsonObject metaSchema
+                            && metaSchema.ContainsKey("$vocabulary")
+                            && metaSchema.ContainsKey("$id"))
                         {
                             options.CustomMetaSchemaRegistry.AddMetaSchema(metaSchema.ToJsonString());
                         }

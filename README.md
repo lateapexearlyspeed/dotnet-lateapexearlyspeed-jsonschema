@@ -49,7 +49,7 @@ ghcr.io/bowtie-json-schema/dotnet-lateapexearlyspeed-jsonschema
 
 ### CI, publishing and updates
 
-- [build.yml](.github/workflows/build.yml) builds the .NET project and runs all 19 fixture checks.
+- [build.yml](.github/workflows/build.yml) builds the .NET project and runs all 20 fixture checks.
   It then calls Bowtie's pinned
   [Harness CI](https://github.com/bowtie-json-schema/bowtie/blob/94e106ed72e2f75700ec19b7927c46cf8417fb8a/.github/workflows/harness-ci.yml)
   to build `amd64` and `arm64` images and run smoke tests. Only a successful **push to `main` in the
@@ -131,7 +131,7 @@ dotnet run --project dotnet-lateapexearlyspeed-jsonschema.csproj --no-build -c R
 | Fixture | Exercises | Run after touching |
 |---|---|---|
 | `metaschema-test-cases.jsonl` | `MetaSchemaPopulator` / `$ref` resolution to a dialect's own canonical meta-schema (all 3 dialects) | `MetaSchemaPopulator`, `meta-schemas/*.json`, csproj `CopyToOutputDirectory` wiring |
-| `vocabulary-test-cases.jsonl` | Custom `$vocabulary` overrides from the case's registry: disabled validation vocabulary and an unknown optional vocabulary | Custom meta-schema registration |
+| `vocabulary-test-cases.jsonl` | Custom `$vocabulary` overrides from the case's registry: disabled validation vocabulary, an unknown optional vocabulary and an unused vocabulary document without `$id` | Custom meta-schema registration |
 | `format-test-cases.jsonl` | Per-dialect format defaults (draft7 vs 2019-09/2020-12) and custom format-assertion vocabulary | Custom meta-schema registration / `ValidateFormat` logic |
 
 **Expected output** (the `valid` values in each `run` response, in order):
@@ -139,7 +139,7 @@ dotnet run --project dotnet-lateapexearlyspeed-jsonschema.csproj --no-build -c R
 | Fixture | Expected results by `seq` |
 |---|---|
 | `metaschema-test-cases.jsonl` | 1, 2, 3: `[true, false]` each |
-| `vocabulary-test-cases.jsonl` | 1: `[false, true, true]`; 2: `[false, true]` |
+| `vocabulary-test-cases.jsonl` | 1: `[false, true, true]`; 2: `[false, true]`; 3: `[true]` |
 | `format-test-cases.jsonl` | 1: `[true, false]`; 2, 3: `[true, true]`; 4: `[true, false]` |
 
 No fixture should return `skipped` or `errored`. These transcripts include the custom meta-schemas in
@@ -230,9 +230,10 @@ honestly as errors or validity mismatches, not filtered out.
 
 ## Vocabulary and format configuration
 
-Custom meta-schemas containing `$vocabulary` are registered from the case's `registry` in
-`JsonValidatorOptions.CustomMetaSchemaRegistry` **before** constructing the validator. Ordinary
-external `$ref` resolution still uses `MetaSchemaPopulator` and the case's registry.
+Custom meta-schemas containing both `$vocabulary` and `$id` are registered from the case's `registry`
+in `JsonValidatorOptions.CustomMetaSchemaRegistry` **before** constructing the validator. Documents
+without `$id` are not pre-registered as meta-schemas, but remain available for ordinary external
+`$ref` resolution through `MetaSchemaPopulator` and the case's registry.
 
 For standard dialects, `format` remains an assertion in draft7 and annotation-only in 2019-09/2020-12.
 For custom meta-schemas, format validation is enabled so the library can honor the selected vocabulary:
