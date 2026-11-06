@@ -64,7 +64,9 @@ ghcr.io/bowtie-json-schema/dotnet-lateapexearlyspeed-jsonschema
   rolling `report` release. Bowtie's central workflow collects these reports separately. Maintainers
   can stagger the scheduled minute to match their rollout.
 - [dependabot.yml](.github/dependabot.yml) checks Docker images daily and Actions weekly, with a
-  three-day cooldown. NuGet update automation is intentionally disabled. Update the library's
+  three-day cooldown. Major updates to the .NET SDK and runtime images are ignored; upgrade the
+  harness target framework, SDK/runtime images and CI SDK version together in a reviewed PR.
+  Minor and patch image updates remain eligible. NuGet update automation is intentionally disabled. Update the library's
   PackageReference in [the project file](dotnet-lateapexearlyspeed-jsonschema.csproj) manually through
   a reviewed PR; publishing a new NuGet library version alone does not update the harness.
 

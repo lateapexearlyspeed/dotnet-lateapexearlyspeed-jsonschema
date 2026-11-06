@@ -12,3 +12,8 @@ updates:
       interval: "daily"
     cooldown:
       default-days: 3
+    ignore:
+      - dependency-name: "dotnet/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dotnet/runtime"
+        update-types: ["version-update:semver-major"]
