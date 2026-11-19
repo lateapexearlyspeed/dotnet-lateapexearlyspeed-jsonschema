@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    open-pull-requests-limit: 1
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+  - package-ecosystem: "docker"
+    directory: "/"
+    open-pull-requests-limit: 1
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 3
+    ignore:
+      - dependency-name: "dotnet/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dotnet/runtime"
+        update-types: ["version-update:semver-major"]
