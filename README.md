@@ -21,7 +21,7 @@ Prerequisites:
 - .NET 8 SDK for native builds
 - PowerShell for the fixture checks
 - Docker with a running Linux container engine, or Podman
-- Python 3.13+ and [Bowtie CLI](https://docs.bowtie.report/en/stable/)
+- Python 3.13+ and [Bowtie CLI](https://docs.bowtie.report/en/stable/) 2026.11.4+
 
 The following examples use PowerShell on Windows and run from the repository root. Neither the library's source
 repository nor an existing JSON Schema Test Suite checkout is required: .NET restores the library
@@ -29,20 +29,22 @@ from NuGet, and Bowtie downloads the official suite from GitHub.
 
 ### Python and Bowtie setup
 
-Create a virtual environment once, then install Bowtie:
+Create a virtual environment once, then install Bowtie. For an existing environment, skip the
+first two commands and rerun the installation command to upgrade:
 
 ```powershell
 python --version
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install bowtie-json-schema
+.\.venv\Scripts\python.exe -m pip install --upgrade "bowtie-json-schema>=2026.11.4"
 ```
 
 In each new terminal, set the executable paths without activating the environment or modifying
-global `PATH`:
+global `PATH`, and enable Python UTF-8 mode for the official suite's Unicode cases:
 
 ```powershell
 $python = (Resolve-Path .\.venv\Scripts\python.exe).Path
 $bowtie = (Resolve-Path .\.venv\Scripts\bowtie.exe).Path
+$env:PYTHONUTF8 = "1"
 & $bowtie --version
 dotnet --version
 docker info --format '{{.OSType}}'
@@ -62,9 +64,13 @@ environment.
 | Bowtie smoke | Not run natively in this guide | `bowtie smoke` |
 | All supported dialects' official compliance cases | Not run natively in this guide | `bowtie site collect -V` |
 
-This guide excludes all `optional/` tests and does not use a pre-existing offline suite. Native fixture
-checks require only .NET and PowerShell, not Docker, Python or Bowtie. Full official compliance tests
-run through Bowtie against the container.
+This guide uses Bowtie's default selection from top-level `validation/tests/*.json`, without
+recursing into `optional/` or using a pre-existing offline suite. Cases are selected by dialect
+`compatibility` and behavior tags: Draft 7 runs untagged cases (excluding optional format
+assertions); Draft 2019-09 and Draft 2020-12 also run `format-annotation` cases, not
+`format-assertion` cases. Cases excluded by these rules are not counted as skipped test results.
+Native fixture checks require only .NET and PowerShell, not Docker, Python or Bowtie. Official
+compliance tests run through Bowtie against the container.
 
 ### Native fixture checks
 
@@ -125,11 +131,11 @@ foreach ($fixture in @("metaschema-test-cases.jsonl", "vocabulary-test-cases.jso
 
 ### Official compliance suite
 
-The collection and completeness-check examples below expect the legacy suite layout
-(`tests/<dialect>/` and `remotes/`). Upstream has migrated to compatibility-tagged cases in
-`validation/tests/`, with per-case `externalSchemas`. Use a Bowtie release that supports that
-layout when testing current upstream. An older collector can fail or test only remaining legacy
-cases; pinning an older revision does not establish completeness for the current suite.
+Bowtie 2026.11.4 supports the unified suite layout in `validation/tests/`, with per-case
+`externalSchemas`. The commands below need no custom driver or harness changes. Bowtie maps
+`data` to `instance` and `externalSchemas` to `registry`. For Draft 2019-09 and Draft 2020-12,
+Bowtie also supplies `$schema` when absent in object schemas and registry documents. It does not
+inject or overwrite `$id`.
 
 ```powershell
 $reports = Join-Path $PWD ("suite-reports-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
@@ -160,9 +166,11 @@ The following Python standard-library check:
 
 - Requires reports for all three dialects and the same suite commit.
 - Downloads that exact official revision into memory, independently of the local filesystem.
-- Compares every top-level source case's description, schema, test descriptions, instances and
-  expected validity with the report, retaining duplicate-case counts. The official suite's `data`
-  field is compared with Bowtie's corresponding `instance` field.
+- Selects top-level unified-format cases using the same dialect compatibility and default tag
+  rules as Bowtie 2026.11.4; it does not read optional or proposal subdirectories.
+- Compares each selected source case's description, schema, registry, test descriptions, instances
+  and expected validity with the report, retaining duplicate-case counts. It accounts for Bowtie's
+  field mappings and added `$schema` values, without changing `$id`.
 - Checks completion footers, unique/consecutive sequence IDs, one response per case, exact result
   lengths, Boolean validity values and the absence of errors, skips and mismatches.
 It checks the saved Bowtie container reports without running the harness again. No local suite checkout
@@ -184,9 +192,13 @@ def require(condition, message):
         raise RuntimeError(message)
 
 directory = Path(sys.argv[1])
-names = ("draft7", "draft2019-09", "draft2020-12")
+dialects = {
+    "draft7": (7, "http://json-schema.org/draft-07/schema#"),
+    "draft2019-09": (2019, "https://json-schema.org/draft/2019-09/schema"),
+    "draft2020-12": (2020, "https://json-schema.org/draft/2020-12/schema"),
+}
 reports = {}
-for name in names:
+for name in dialects:
     path = directory / (name + ".json")
     records = [json.loads(line) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
     require(len(records) >= 2, f"{name}: empty or incomplete report")
@@ -206,6 +218,47 @@ url = f"https://codeload.github.com/json-schema-org/JSON-Schema-Test-Suite/zip/{
 with urlopen(url, timeout=60) as response:
     archive = ZipFile(BytesIO(response.read()))
 
+source_cases = []
+for member in archive.namelist():
+    parts = member.split("/")
+    if len(parts) == 4 and parts[1:3] == ["validation", "tests"] and parts[3].endswith(".json"):
+        source_cases.extend(json.loads(archive.read(member))["tests"])
+require(source_cases, "No top-level unified-format official source cases found")
+
+def is_compatible(compatibility, version):
+    compatible = True
+    for constraint in compatibility.split(",") if compatibility is not None else []:
+        match = re.fullmatch(r"(<=|>=|=)?(\d+)", constraint.strip())
+        require(match is not None, f"Invalid compatibility constraint: {constraint}")
+        operator, bound = match.group(1) or ">=", int(match.group(2))
+        if operator == "<=":
+            compatible = version <= bound
+        elif operator == "=":
+            compatible = version == bound
+        else:
+            compatible = version >= bound
+        if version <= bound:
+            break
+    return compatible
+
+def with_explicit_dialect(schema, uri):
+    return schema if type(schema) is bool else {"$schema": uri, **schema}
+
+def selected_cases(name):
+    version, uri = dialects[name]
+    expected_tags = set() if name == "draft7" else {"format-annotation"}
+    for case in source_cases:
+        if not is_compatible(case.get("compatibility"), version):
+            continue
+        if not expected_tags.issuperset(case.get("tags", [])):
+            continue
+        schema = case["schema"]
+        registry = case.get("externalSchemas", {})
+        if name != "draft7":
+            schema = with_explicit_dialect(schema, uri)
+            registry = {key: with_explicit_dialect(value, uri) for key, value in registry.items()}
+        yield {**case, "schema": schema, "registry": registry}
+
 def signature(case):
     tests = [
         {
@@ -216,7 +269,12 @@ def signature(case):
         for test in case["tests"]
     ]
     return json.dumps(
-        {"description": case["description"], "schema": case["schema"], "tests": tests},
+        {
+            "description": case["description"],
+            "schema": case["schema"],
+            "registry": case.get("registry", {}),
+            "tests": tests,
+        },
         sort_keys=True, separators=(",", ":"),
     )
 
@@ -246,11 +304,7 @@ for name, records in reports.items():
         target[seq] = record["case"] if "case" in record else record
     require(set(cases) == set(outcomes) == set(range(1, len(cases) + 1)), f"{name}: missing cases or responses")
     require(len(records) == 2 * len(cases) + 2, f"{name}: unexpected report records")
-    source = []
-    for member in archive.namelist():
-        parts = member.split("/")
-        if len(parts) == 4 and parts[1:3] == ["tests", name] and parts[3].endswith(".json"):
-            source.extend(json.loads(archive.read(member)))
+    source = list(selected_cases(name))
     require(source, f"{name}: no official source cases found")
     require(Counter(map(signature, source)) == Counter(map(signature, cases.values())), f"{name}: source/report cases differ")
     count = 0
@@ -298,7 +352,9 @@ controls whether support is required; it does not disable assertions.
 - [report.yml](.github/workflows/report.yml) runs manually or every six hours, at minute 20 UTC, in
   the same official repository. It calls Bowtie's shared Harness Report to test the published image
   and update the rolling `report` release. Bowtie's central workflow collects reports separately.
-  Report generation is independent of the image build workflow.
+  The shared workflow installs the latest released Bowtie on each run; its pinned workflow
+  revision does not pin the Bowtie package version. Report generation is independent of the
+  image build workflow.
 
 ## Maintenance
 
