@@ -41,7 +41,7 @@ jobs:
       attestations: write
       packages: write
       artifact-metadata: write
-    uses: bowtie-json-schema/bowtie/.github/workflows/harness-ci.yml@94e106ed72e2f75700ec19b7927c46cf8417fb8a
+    uses: bowtie-json-schema/bowtie/.github/workflows/harness-ci.yml@9558af383333aba622707e2b1e821ff0d1b803ad
     with:
       publish: ${{ github.repository == 'bowtie-json-schema/dotnet-lateapexearlyspeed-jsonschema' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       is-latest: ${{ github.ref == 'refs/heads/main' }}
